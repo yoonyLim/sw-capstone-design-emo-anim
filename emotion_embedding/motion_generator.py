@@ -61,30 +61,28 @@ class MotionGenerator(nn.Module):
         # 3. Output Projection: Squashes the 64 channels back down to 3 (X,Y,Z)
         self.output_proj = nn.Conv2d(latent_dim, in_channels, kernel_size=1)
 
-    def forward(self, content_code, emotion_vector, adj_matrix, original_motion):
+    def forward(self, content_code, emotion_vector, adj_matrix, style_multiplier=1.0):
         """
         content_code:    [Batch, 64, Time, 75] (From Content Encoder)
         emotion_vector:  [Batch, 64]           (From Audio)
         adj_matrix:      [75, 75]
         original_motion: [Batch, 3, Time, 75]  (For the final residual connection)
         """
+        amplified_emotion = emotion_vector * style_multiplier
         
         # Step 1: Inject the Emotion (Layer 1)
         x = self.stgcn1(content_code, adj_matrix)
-        x = self.adain1(x, emotion_vector)
+        x = self.adain1(x, amplified_emotion)
         
         # Step 2: Inject the Emotion (Layer 2)
         x = self.stgcn2(x, adj_matrix)
-        x = self.adain2(x, emotion_vector)
+        x = self.adain2(x, amplified_emotion)
         
         # Step 3: Final smoothing pass
         x = self.stgcn3(x, adj_matrix)
         
         # Step 4: Decode back to rotations
-        emotion_delta = self.output_proj(x)
-        
-        # Step 5: THE RESIDUAL CONNECTION
-        stylized_motion = original_motion + emotion_delta
+        stylized_motion = self.output_proj(x)
         
         return stylized_motion
 

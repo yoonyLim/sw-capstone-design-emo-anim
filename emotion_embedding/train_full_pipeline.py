@@ -120,46 +120,139 @@ def train():
     
     # 3. The Motion Generator
     generator = MotionGenerator(num_joints=dataset.num_joints).to(device)
+
+    # ce_checkpoint = "content_encoder_epoch_50.pth"
+    # gen_checkpoint = "motion_generator_epoch_50.pth"
+
+    # if os.path.exists(ce_checkpoint) and os.path.exists(gen_checkpoint):
+    #     content_encoder.load_state_dict(torch.load(ce_checkpoint))
+    #     generator.load_state_dict(torch.load(gen_checkpoint))
+    #     print(f"SUCCESS: Successfully loaded weights from Epoch 50! Resuming training...")
+    # else:
+    #     print("WARNING: Checkpoint files not found. Starting from scratch.")
     
     # --- SETUP OPTIMIZERS ---
     criterion = nn.L1Loss()
     optimizer = optim.AdamW(list(content_encoder.parameters()) + list(generator.parameters()), lr=1e-4)
-    epochs = 5
+    start_epoch = 0
+    total_epochs = 20
+
+    stats = torch.load('motion_stats.pt', map_location=device)
+    data_mean = stats['mean']
+    data_std = stats['std']
+    print("Loaded Normalization Statistics.")
 
     # --- TRAINING LOOP ---
-    for epoch in range(epochs):
+    for epoch in range(start_epoch, total_epochs):
         content_encoder.train()
         generator.train()
         running_loss = 0.0
         
-        loop = tqdm(dataloader, desc=f"Epoch {epoch+1}/{epochs}")
+        loop = tqdm(dataloader, desc=f"Epoch {epoch+1}/{total_epochs}", leave=False, dynamic_ncols=True)
         
-        for motion_batch, audio_batch in loop:
+        for batch_idx, (motion_batch, audio_batch) in enumerate(loop):
             motion_batch = motion_batch.to(device)
             audio_batch = audio_batch.to(device)
+
+            # ==========================================
+            # BOTTLENECK DIAGNOSTIC REPORT (Runs only on the 1st batch)
+            # ==========================================
+            if epoch == start_epoch and batch_idx == 0:
+                print("\n\n" + "="*50)
+                print("SYSTEM DIAGNOSTIC REPORT")
+                print("="*50)
+                
+                # 1. Check Data Normalization (AdaIN Killer)
+                m_min = motion_batch.min().item()
+                m_max = motion_batch.max().item()
+                print(f"Motion Data Bounds:  MIN: {m_min:.2f}  |  MAX: {m_max:.2f}")
+                
+                if m_max > 5.0 or m_min < -5.0:
+                    print("  [CRITICAL WARNING] Data is not normalized! Values are too large for AdaIN.")
+                    if m_max > 170.0:
+                        print("  [CRITICAL WARNING] Euler Angles detected (-180 to 180). This will cause 358-degree jump penalties!")
+                else:
+                    print("  [PASS] Data appears to be normalized.")
+
+                # 2. Check Adjacency Matrix Scaling (GCN Killer)
+                adj_min = adj_matrix.min().item()
+                adj_max = adj_matrix.max().item()
+                print(f"\nAdjacency Matrix Bounds: MIN: {adj_min:.4f} | MAX: {adj_max:.4f}")
+                
+                if adj_max > 1.1:
+                    print("  [CRITICAL WARNING] Adjacency matrix is not symmetrically normalized.")
+                    print("  Graph Convolutions will mathematically explode at deep layers.")
+                else:
+                    print("  [PASS] Adjacency matrix scaling looks healthy.")
+                
+                print("="*50 + "\n")
+            # ==========================================
             
             optimizer.zero_grad()
+
+            motion_batch_norm = (motion_batch - data_mean) / data_std
             
             # 1. Extract real emotion from the audio file
             with torch.no_grad():
                 emotion_vector = audio_extractor(audio_batch)
                 
             # 2. Strip the style from the motion file to create a sterile base
-            content_code = content_encoder(motion_batch, adj_matrix)
+            content_code = content_encoder(motion_batch_norm, adj_matrix)
             
             # 3. Generate the stylized animation
-            output_motion = generator(content_code, emotion_vector, adj_matrix, motion_batch)
+            output_motion_norm = generator(content_code, emotion_vector, adj_matrix)
             
-            # 4. Calculate Loss & Step
-            loss = criterion(output_motion, motion_batch)
-            loss.backward()
+            raw_error = torch.abs(output_motion_norm - motion_batch_norm)
+            joint_weights = torch.ones(75).to(device)
+            
+            # NOTE: Verify these index ranges against your specific BVH hierarchy!
+            right_arm_indices = range(9, 36)   
+            left_arm_indices = range(36, 63)  
+            right_leg_indices = range(63, 69)
+            left_leg_indices = range(69, 75)
+            
+            joint_weights[left_arm_indices] = 3.0
+            joint_weights[right_arm_indices] = 3.0
+            joint_weights[right_leg_indices] = 2.0
+            joint_weights[left_leg_indices] = 2.0
+            
+            weighted_error = raw_error * joint_weights.view(1, 1, 1, -1)
+            loss_rec = weighted_error.mean()
+            # ==========================================
+            
+            # Loss B: Velocity Loss (Tames the crazy arms)
+            vel_generated = output_motion_norm[:, :, 1:, :] - output_motion_norm[:, :, :-1, :]
+            vel_real = motion_batch_norm[:, :, 1:, :] - motion_batch_norm[:, :, :-1, :]
+            loss_vel = criterion(vel_generated, vel_real)
+            
+            # Loss C: Content Preservation Loss (Keeps the choreography accurate)
+            with torch.no_grad():
+                target_content_code = content_encoder(motion_batch_norm, adj_matrix).detach()
+                
+            generated_content_code = content_encoder(output_motion_norm, adj_matrix)
+            loss_content = criterion(generated_content_code, target_content_code)
+            
+            # Combine the losses 
+            total_loss = loss_rec + (0.1 * loss_vel) + (0.05 * loss_content)
+            
+            # 4. Backward Pass & Step
+            total_loss.backward()
             torch.nn.utils.clip_grad_norm_(generator.parameters(), max_norm=1.0)
             optimizer.step()
             
-            running_loss += loss.item()
-            loop.set_postfix(loss=loss.item())
+            running_loss += total_loss.item()
+            loop.set_postfix(loss=total_loss.item(), rec=loss_rec.item(), vel=loss_vel.item())
             
         print(f"Epoch {epoch+1} Avg Loss: {running_loss/len(dataloader):.4f}")
+
+        if (epoch + 1) % 50 == 0:
+            ce_path = f"content_encoder_epoch_{epoch+1}.pth"
+            gen_path = f"motion_generator_epoch_{epoch+1}.pth"
+            
+            torch.save(content_encoder.state_dict(), ce_path)
+            torch.save(generator.state_dict(), gen_path)
+            
+            print(f"--> [CHECKPOINT] Saved: {ce_path} & {gen_path}")
 
     torch.save(content_encoder.state_dict(), "content_encoder_weights.pth")
     torch.save(generator.state_dict(), "motion_generator_weights.pth")

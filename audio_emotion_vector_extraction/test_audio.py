@@ -32,6 +32,11 @@ def test_single_audio(file_path):
         # Averages the left and right channels together
         waveform = torch.mean(waveform, dim=0, keepdim=True)
 
+    max_amplitude = torch.max(torch.abs(waveform))
+
+    if max_amplitude > 0:
+        waveform = waveform / max_amplitude
+
     # Resample to 16kHz
     if sample_rate != 16000:
         resampler = torchaudio.transforms.Resample(orig_freq=sample_rate, new_freq=16000)
@@ -76,5 +81,5 @@ def test_single_audio(file_path):
 
 if __name__ == "__main__":
     # Change this path to ANY .wav file on your computer to test the network
-    TEST_FILE = r"C:\Users\hayoo\Documents\DevProjects\emo-anim\audio_emotion_vector_extraction\arthur.wav"
+    TEST_FILE = r"C:\Users\hayoo\Documents\DevProjects\emo-anim\audio_emotion_vector_extraction\sad.wav"
     test_single_audio(TEST_FILE)
