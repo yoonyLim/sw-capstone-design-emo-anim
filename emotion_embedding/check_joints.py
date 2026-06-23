@@ -1,7 +1,15 @@
+from pathlib import Path
+import sys
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.append(str(PROJECT_DIR))
+from project_env import get_path
+
 from bvh_loader import BVHMotionParser
 
-# Point this to any valid .bvh file in your raw dataset
-sample_bvh = r"D:\Capstone_Project\BEAT_Motion_Raw\beat_english_v0.2.1\beat_english_v0.2.1\1\1_wayne_0_1_1.bvh"
+
+sample_bvh = str(get_path("EMO_ANIM_SAMPLE_BVH", "data/sample.bvh"))
 
 print(f"Parsing BVH: {sample_bvh}...")
 parser = BVHMotionParser(sample_bvh)
@@ -11,7 +19,7 @@ print("=" * 40)
 print("JOINT INDEX MAP")
 print("=" * 40)
 
-# enumerate() automatically pairs the index number with the joint name
+
 for index, joint_name in enumerate(parser.joints):
-    # Formats the output so the numbers align cleanly in your terminal
+
     print(f"Index {index:02d}  ->  {joint_name}")

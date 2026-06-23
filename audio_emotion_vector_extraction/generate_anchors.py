@@ -1,4 +1,12 @@
 from pathlib import Path
+import sys
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.append(str(PROJECT_DIR))
+from project_env import get_path
+
+from pathlib import Path
 import argparse
 import json
 
@@ -12,7 +20,7 @@ from ast_model import ASTEmotionExtractor
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
-DEFAULT_DATA_DIR = r"D:\Capstone_Project\BEAT_Audio_Raw"
+DEFAULT_DATA_DIR = str(get_path("BEAT_AUDIO_DOWNLOAD_DIR", "data/BEAT_Audio_Raw"))
 EMOTION_NAMES = [
     "Neutral",
     "Happiness",

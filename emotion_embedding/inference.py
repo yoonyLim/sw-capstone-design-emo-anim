@@ -1,8 +1,16 @@
-# python inference.py --emotion-source sliders --happiness 1.0 --no-finger-anchor
-# python inference.py --emotion-source sliders --happiness 1.0 --no-root-anchor
-# python inference.py --emotion-source sliders --happiness 1.0 --output D:\Capstone_Project\Test_Data\happy_test.bvh
-# python inference.py --emotion-source sliders --sadness 0.8 --fear 0.4 --output D:\Capstone_Project\Test_Data\sad_fear_test.bvh
-# python inference.py --emotion-source sliders --anger 0.7 --surprise 0.5 --style-multiplier 1.2
+from pathlib import Path
+import sys
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.append(str(PROJECT_DIR))
+from project_env import get_path
+
+
+
+
+
+
 
 from pathlib import Path
 import argparse
@@ -27,12 +35,9 @@ sys.path.append(str(AUDIO_EMOTION_DIR))
 from ast_model import ASTEmotionExtractor
 
 
-DEFAULT_AUDIO_FILE = r"D:\Capstone_Project\Test_Data\arthur.wav"
-DEFAULT_NEUTRAL_BVH = (
-    r"D:\Capstone_Project\BEAT_Motion_Raw\beat_english_v0.2.1"
-    r"\beat_english_v0.2.1\1\1_wayne_0_1_1.bvh"
-)
-DEFAULT_OUTPUT_FILE = r"D:\Capstone_Project\Test_Data\test0605.bvh"
+DEFAULT_AUDIO_FILE = str(get_path("EMO_ANIM_DEFAULT_AUDIO", "data/input.wav"))
+DEFAULT_NEUTRAL_BVH = str(get_path("EMO_ANIM_SAMPLE_BVH", "data/sample.bvh"))
+DEFAULT_OUTPUT_FILE = str(get_path("EMO_ANIM_DEFAULT_OUTPUT_BVH", "outputs/generated.bvh"))
 DEFAULT_RAW_ANCHORS_FILE = AUDIO_EMOTION_DIR / "master_emotion_anchors_raw.json"
 DEFAULT_NORMALIZED_ANCHORS_FILE = AUDIO_EMOTION_DIR / "master_emotion_anchors.json"
 DEFAULT_ANCHORS_FILE = (

@@ -1,4 +1,12 @@
 from pathlib import Path
+import sys
+
+PROJECT_DIR = Path(__file__).resolve().parents[1]
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.append(str(PROJECT_DIR))
+from project_env import get_path
+
+from pathlib import Path
 import argparse
 
 import torch
@@ -11,10 +19,7 @@ from motion_generator import MotionGenerator
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 
-DEFAULT_SAMPLE_BVH = (
-    r"D:\Capstone_Project\BEAT_Motion_Raw\beat_english_v0.2.1"
-    r"\beat_english_v0.2.1\1\1_wayne_0_1_1.bvh"
-)
+DEFAULT_SAMPLE_BVH = str(get_path("EMO_ANIM_SAMPLE_BVH", "data/sample.bvh"))
 
 
 class StylizationPipeline(nn.Module):
